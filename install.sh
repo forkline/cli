@@ -137,8 +137,8 @@ main() {
   tar -xzf "${tmpdir}/${archive}" -C "$tmpdir" || fail "failed to extract archive"
 
   binary=""
-  if [ -f "${tmpdir}/${target}/forkline" ]; then
-    binary="${tmpdir}/${target}/forkline"
+  if [ -f "${tmpdir}/forkline-${version}-${target}/forkline" ]; then
+    binary="${tmpdir}/forkline-${version}-${target}/forkline"
   else
     binary="$(find "$tmpdir" -name forkline -type f | head -1)"
   fi
