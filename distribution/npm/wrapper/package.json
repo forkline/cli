@@ -1,0 +1,39 @@
+{
+  "name": "@forkline/cli",
+  "version": "0.0.0-placeholder",
+  "description": "Forkline CLI - OpenCode runner management",
+  "bin": {
+    "forkline": "./bin/forkline.js"
+  },
+  "optionalDependencies": {
+    "@forkline/cli-darwin-arm64": "0.0.0-placeholder",
+    "@forkline/cli-darwin-x64": "0.0.0-placeholder",
+    "@forkline/cli-linux-arm64-gnu": "0.0.0-placeholder",
+    "@forkline/cli-linux-arm64-musl": "0.0.0-placeholder",
+    "@forkline/cli-linux-x64-gnu": "0.0.0-placeholder",
+    "@forkline/cli-linux-x64-musl": "0.0.0-placeholder",
+    "@forkline/cli-win32-arm64": "0.0.0-placeholder",
+    "@forkline/cli-win32-x64": "0.0.0-placeholder"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin"
+  ],
+  "keywords": [
+    "forkline",
+    "cli",
+    "runner",
+    "opencode"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/forkline/cli"
+  },
+  "homepage": "https://github.com/forkline/cli#readme",
+  "bugs": {
+    "url": "https://github.com/forkline/cli/issues"
+  }
+}
