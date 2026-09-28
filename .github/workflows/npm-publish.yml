@@ -1,0 +1,114 @@
+---
+name: npm Publish
+
+on:
+  repository_dispatch:
+    types: [release]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.37.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish to npm (trusted publishing)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve and validate tag
+        id: tag
+        env:
+          DISPATCH_TAG: ${{ github.event.client_payload.tag }}
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            TAG="$DISPATCH_TAG"
+          else
+            TAG="$INPUT_TAG"
+          fi
+
+          if [[ -z "$TAG" ]]; then
+            echo "ERROR: tag is empty" >&2
+            exit 1
+          fi
+
+          if [[ ! "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "ERROR: invalid tag format: $TAG" >&2
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag=$TAG version=${TAG#v}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Install npm >=11.5.1
+        run: |
+          npm install -g npm@11
+          NPM_VERSION="$(npm --version)"
+          echo "npm version: $NPM_VERSION"
+          LOWEST="$(printf '%s\n' "11.5.1" "$NPM_VERSION" | sort -V | head -n1)"
+          if [[ "$LOWEST" != "11.5.1" ]]; then
+            echo "ERROR: npm $NPM_VERSION < 11.5.1 (trusted publishing requires >=11.5.1)" >&2
+            exit 1
+          fi
+          echo "npm version $NPM_VERSION satisfies >=11.5.1"
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p assets
+          TAG="${{ steps.tag.outputs.tag }}"
+          gh release download "$TAG" \
+            --repo forkline/cli \
+            --pattern '*.tar.gz' \
+            --pattern '*.zip' \
+            --pattern 'SHA256SUMS.txt' \
+            --dir assets
+
+      - name: Verify asset count and checksums
+        run: |
+          ARCHIVE_COUNT=$(find assets/ -maxdepth 1 \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l)
+          if [[ "$ARCHIVE_COUNT" -ne 8 ]]; then
+            echo "ERROR: expected 8 archives, found $ARCHIVE_COUNT" >&2
+            ls -la assets/
+            exit 1
+          fi
+          echo "Found 8 archives"
+
+          if [[ ! -f assets/SHA256SUMS.txt ]]; then
+            echo "ERROR: SHA256SUMS.txt not found" >&2
+            exit 1
+          fi
+
+          (cd assets && sha256sum -c SHA256SUMS.txt)
+          echo "Checksums verified"
+
+      - name: Generate npm packages
+        run: |
+          node distribution/npm/generate.js \
+            --assets-dir ./assets \
+            --version "${{ steps.tag.outputs.version }}" \
+            --require-all
+
+      - name: Preflight and publish
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          bash distribution/scripts/publish-npm.sh "$TAG" distribution/npm/packages
