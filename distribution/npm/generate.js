@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
 const TARGETS = {
   'aarch64-apple-darwin': { npm: 'darwin-arm64', os: ['darwin'], cpu: ['arm64'] },
@@ -16,6 +16,7 @@ const TARGETS = {
 };
 
 const REPO_URL = 'https://github.com/forkline/cli';
+const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9][a-zA-Z0-9.]*[a-zA-Z0-9])?$/;
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -30,6 +31,16 @@ function parseArgs() {
 
   if (!parsed.assetsDir || !parsed.version) {
     console.error('Usage: generate.js --assets-dir <dir> --version <version> [--out-dir <dir>] [--require-all]');
+    process.exit(1);
+  }
+
+  if (!SEMVER_RE.test(parsed.version)) {
+    console.error(`ERROR: invalid version format: ${parsed.version}`);
+    process.exit(1);
+  }
+
+  if (!path.isAbsolute(parsed.assetsDir) && !parsed.assetsDir.startsWith('.')) {
+    console.error(`ERROR: assets-dir must be an absolute or relative path: ${parsed.assetsDir}`);
     process.exit(1);
   }
 
@@ -54,6 +65,27 @@ function findAsset(assetsDir, version, target) {
   return null;
 }
 
+function assertWithin(childPath, parentDir) {
+  const resolvedChild = path.resolve(childPath);
+  const resolvedParent = path.resolve(parentDir);
+  if (!resolvedChild.startsWith(resolvedParent + path.sep) && resolvedChild !== resolvedParent) {
+    throw new Error(`Path traversal detected: ${childPath} escapes ${parentDir}`);
+  }
+}
+
+function findBinDir(tmpDir, binName) {
+  const entries = fs.readdirSync(tmpDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const candidate = path.join(tmpDir, entry.name, binName);
+    if (fs.existsSync(candidate)) {
+      assertWithin(candidate, tmpDir);
+      return path.join(tmpDir, entry.name);
+    }
+  }
+  return null;
+}
+
 function extractBinary(assetPath, assetType, target, outBinPath) {
   const isWindows = target.includes('windows');
   const binName = isWindows ? 'forkline.exe' : 'forkline';
@@ -66,26 +98,52 @@ function extractBinary(assetPath, assetType, target, outBinPath) {
 
   try {
     if (assetType === 'tar.gz') {
-      execSync(`tar -xzf "${assetPath}" -C "${tmpDir}"`, { stdio: 'pipe' });
-      const archiveDir = fs.readdirSync(tmpDir)[0];
-      const srcBin = path.join(tmpDir, archiveDir, binName);
-      if (!fs.existsSync(srcBin)) {
-        throw new Error(`Binary ${binName} not found in archive at ${assetPath}`);
+      const result = spawnSync('tar', ['-xzf', assetPath, '-C', tmpDir], { stdio: 'pipe' });
+      if (result.error) {
+        if (result.error.code === 'ENOENT') {
+          throw new Error('tar command not found — install tar and retry');
+        }
+        throw new Error(`tar failed: ${result.error.message}`);
       }
+      if (result.status !== 0) {
+        const stderr = (result.stderr || '').toString().trim();
+        throw new Error(`tar exited ${result.status} extracting ${path.basename(assetPath)}: ${stderr || 'archive may be corrupt'}`);
+      }
+      const archiveDir = findBinDir(tmpDir, binName);
+      if (!archiveDir) {
+        throw new Error(`Binary ${binName} not found in archive at ${path.basename(assetPath)}`);
+      }
+      const srcBin = path.join(archiveDir, binName);
+      assertWithin(srcBin, tmpDir);
       fs.copyFileSync(srcBin, outBinPath);
     } else if (assetType === 'zip') {
       const result = spawnSync('unzip', ['-o', assetPath, '-d', tmpDir], { stdio: 'pipe' });
-      if (result.status !== 0) {
+      if (result.error && result.error.code === 'ENOENT') {
         const bsdtar = spawnSync('bsdtar', ['-xf', assetPath, '-C', tmpDir], { stdio: 'pipe' });
+        if (bsdtar.error && bsdtar.error.code === 'ENOENT') {
+          throw new Error('Neither unzip nor bsdtar found — install one and retry');
+        }
         if (bsdtar.status !== 0) {
-          throw new Error('Neither unzip nor bsdtar available for zip extraction');
+          const stderr = (bsdtar.stderr || '').toString().trim();
+          throw new Error(`bsdtar exited ${bsdtar.status} extracting ${path.basename(assetPath)}: ${stderr || 'archive may be corrupt'}`);
+        }
+      } else if (result.status !== 0) {
+        const bsdtar = spawnSync('bsdtar', ['-xf', assetPath, '-C', tmpDir], { stdio: 'pipe' });
+        if (bsdtar.error && bsdtar.error.code === 'ENOENT') {
+          const stderr = (result.stderr || '').toString().trim();
+          throw new Error(`unzip exited ${result.status} and bsdtar not found: ${stderr || 'archive may be corrupt'}`);
+        }
+        if (bsdtar.status !== 0) {
+          const stderr = (bsdtar.stderr || '').toString().trim();
+          throw new Error(`Both unzip and bsdtar failed extracting ${path.basename(assetPath)}: ${stderr || 'archive may be corrupt'}`);
         }
       }
-      const archiveDir = fs.readdirSync(tmpDir)[0];
-      const srcBin = path.join(tmpDir, archiveDir, binName);
-      if (!fs.existsSync(srcBin)) {
-        throw new Error(`Binary ${binName} not found in archive at ${assetPath}`);
+      const archiveDir = findBinDir(tmpDir, binName);
+      if (!archiveDir) {
+        throw new Error(`Binary ${binName} not found in archive at ${path.basename(assetPath)}`);
       }
+      const srcBin = path.join(archiveDir, binName);
+      assertWithin(srcBin, tmpDir);
       fs.copyFileSync(srcBin, outBinPath);
     } else {
       fs.copyFileSync(assetPath, outBinPath);
@@ -94,6 +152,8 @@ function extractBinary(assetPath, assetType, target, outBinPath) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 
+  const resolvedOut = path.resolve(outBinPath);
+  assertWithin(resolvedOut, path.resolve(path.dirname(outBinPath)));
   fs.chmodSync(outBinPath, 0o755);
 }
 
@@ -158,7 +218,8 @@ function main() {
   const { assetsDir, version, outDir, requireAll } = parseArgs();
   const wrapperTemplateDir = path.join(__dirname, 'wrapper');
 
-  if (!fs.existsSync(assetsDir)) {
+  const resolvedAssets = path.resolve(assetsDir);
+  if (!fs.existsSync(resolvedAssets) || !fs.statSync(resolvedAssets).isDirectory()) {
     console.error(`Assets directory not found: ${assetsDir}`);
     process.exit(1);
   }
@@ -171,7 +232,7 @@ function main() {
   let missing = [];
 
   for (const [rustTarget, targetInfo] of Object.entries(TARGETS)) {
-    const asset = findAsset(assetsDir, version, rustTarget);
+    const asset = findAsset(resolvedAssets, version, rustTarget);
     if (!asset) {
       missing.push(rustTarget);
       continue;
