@@ -35,37 +35,33 @@ PLATFORM_PKGS=(
   cli-win32-x64
 )
 
-ALL_PKGS=("${PLATFORM_PKGS[@]}" cli)
-
-echo "=== Preflight: verifying all 9 packages absent at version $VERSION ==="
-PREFLIGHT_FAILED=false
-for pkg in "${ALL_PKGS[@]}"; do
-  if npm view "@forkline/$pkg@$VERSION" version >/dev/null 2>&1; then
-    echo "  EXISTS: @forkline/$pkg@$VERSION" >&2
-    PREFLIGHT_FAILED=true
-  else
-    echo "  absent: @forkline/$pkg@$VERSION (ok)"
+check_pkg_exists() {
+  local pkg_name="$1"
+  local remote_version
+  remote_version="$(npm view "@forkline/${pkg_name}@${VERSION}" version 2>/dev/null || true)"
+  if [[ "$remote_version" == "$VERSION" ]]; then
+    return 0
   fi
-done
+  return 1
+}
 
-if [[ "$PREFLIGHT_FAILED" == "true" ]]; then
-  echo "ERROR: one or more packages already published at version $VERSION — aborting" >&2
-  exit 1
-fi
-echo "Preflight passed: all 9 packages absent at $VERSION"
+validate_pkg_metadata() {
+  local pkg_dir="$1"
+  local pkg_name="$2"
+  local local_version local_name
 
-for pkg in "${PLATFORM_PKGS[@]}"; do
-  pkg_dir="$PACKAGES_DIR/$pkg"
-  if [[ ! -d "$pkg_dir" ]]; then
-    echo "ERROR: platform package directory missing: $pkg_dir" >&2
+  local_version="$(node -e "console.log(require('${pkg_dir}/package.json').version)")"
+  local_name="$(node -e "console.log(require('${pkg_dir}/package.json').name)")"
+
+  if [[ "$local_version" != "$VERSION" ]]; then
+    echo "ERROR: package ${pkg_name} has version ${local_version}, expected ${VERSION}" >&2
     exit 1
   fi
-done
-
-if [[ ! -d "$PACKAGES_DIR/cli" ]]; then
-  echo "ERROR: wrapper package directory missing: $PACKAGES_DIR/cli" >&2
-  exit 1
-fi
+  if [[ "$local_name" != "@forkline/${pkg_name}" ]]; then
+    echo "ERROR: package name mismatch — expected @forkline/${pkg_name}, got ${local_name}" >&2
+    exit 1
+  fi
+}
 
 publish_pkg() {
   local pkg_dir="$1"
@@ -80,15 +76,75 @@ publish_pkg() {
   fi
 }
 
-echo ""
-echo "=== Publishing 8 platform packages (dist-tag: $DIST_TAG) ==="
+echo "=== Checking existing packages at version $VERSION ==="
+SKIP_PLATFORM=()
+PUBLISH_PLATFORM=()
+
 for pkg in "${PLATFORM_PKGS[@]}"; do
-  publish_pkg "$PACKAGES_DIR/$pkg" "@forkline/$pkg"
+  pkg_dir="$PACKAGES_DIR/$pkg"
+  if [[ ! -d "$pkg_dir" ]]; then
+    echo "ERROR: platform package directory missing: $pkg_dir" >&2
+    exit 1
+  fi
+  validate_pkg_metadata "$pkg_dir" "$pkg"
+
+  if check_pkg_exists "$pkg"; then
+    echo "  EXISTS (skip): @forkline/$pkg@$VERSION"
+    SKIP_PLATFORM+=("$pkg")
+  else
+    echo "  missing:       @forkline/$pkg@$VERSION (will publish)"
+    PUBLISH_PLATFORM+=("$pkg")
+  fi
 done
 
-echo ""
-echo "=== Publishing wrapper package (dist-tag: $DIST_TAG) ==="
-publish_pkg "$PACKAGES_DIR/cli" "@forkline/cli"
+if [[ ! -d "$PACKAGES_DIR/cli" ]]; then
+  echo "ERROR: wrapper package directory missing: $PACKAGES_DIR/cli" >&2
+  exit 1
+fi
+validate_pkg_metadata "$PACKAGES_DIR/cli" "cli"
 
 echo ""
-echo "=== Complete: 9 packages published at $VERSION (tag: $DIST_TAG) ==="
+echo "Summary: ${#SKIP_PLATFORM[@]} existing, ${#PUBLISH_PLATFORM[@]} to publish"
+
+if [[ "${#PUBLISH_PLATFORM[@]}" -gt 0 ]]; then
+  echo ""
+  echo "=== Publishing ${#PUBLISH_PLATFORM[@]} platform package(s) (dist-tag: $DIST_TAG) ==="
+  for pkg in "${PUBLISH_PLATFORM[@]}"; do
+    publish_pkg "$PACKAGES_DIR/$pkg" "@forkline/$pkg"
+  done
+else
+  echo ""
+  echo "=== All 8 platform packages already published at $VERSION ==="
+fi
+
+echo ""
+echo "=== Pre-wrapper check: verifying all 8 platform packages on registry ==="
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "[DRY RUN] Skipping registry verification (would check all 8 platform packages)"
+else
+  WRAPPER_BLOCKED=false
+  for pkg in "${PLATFORM_PKGS[@]}"; do
+    if ! check_pkg_exists "$pkg"; then
+      echo "  MISSING: @forkline/$pkg@$VERSION" >&2
+      WRAPPER_BLOCKED=true
+    fi
+  done
+
+  if [[ "$WRAPPER_BLOCKED" == "true" ]]; then
+    echo "ERROR: not all 8 platform packages exist at $VERSION — cannot publish wrapper" >&2
+    exit 1
+  fi
+  echo "All 8 platform packages verified on registry"
+fi
+
+if check_pkg_exists "cli"; then
+  echo ""
+  echo "SKIP: @forkline/cli@$VERSION already published"
+else
+  echo ""
+  echo "=== Publishing wrapper package (dist-tag: $DIST_TAG) ==="
+  publish_pkg "$PACKAGES_DIR/cli" "@forkline/cli"
+fi
+
+echo ""
+echo "=== Complete: all 9 packages at $VERSION (tag: $DIST_TAG) ==="
