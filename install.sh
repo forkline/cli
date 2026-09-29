@@ -60,10 +60,18 @@ resolve_version() {
     echo "$_v"
     return
   fi
+  _parse_tag() {
+    echo "$1" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+  }
   _url="${API_URL}/repos/${REPO}/releases/latest"
-  _json="$(curl -sS -H "Accept: application/vnd.github+json" "$_url")" || fail "failed to fetch latest release from $_url"
-  _tag="$(echo "$_json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
-  [ -n "$_tag" ] || fail "could not parse tag_name from GitHub API response"
+  _json="$(curl -sS -H "Accept: application/vnd.github+json" "$_url" 2>/dev/null || true)"
+  _tag="$(_parse_tag "$_json")"
+  if [ -z "$_tag" ]; then
+    _url="${API_URL}/repos/${REPO}/releases?per_page=1"
+    _json="$(curl -sS -H "Accept: application/vnd.github+json" "$_url" 2>/dev/null || true)"
+    _tag="$(_parse_tag "$_json")"
+  fi
+  [ -n "$_tag" ] || fail "could not resolve a release tag from the GitHub API"
   _tag="${_tag#v}"
   echo "$_tag"
 }
