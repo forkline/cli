@@ -45,6 +45,21 @@ check_pkg_exists() {
   return 1
 }
 
+wait_pkg_exists() {
+  local pkg_name="$1"
+  local max_attempts="${2:-20}"
+  local attempt=1
+  while [[ "$attempt" -le "$max_attempts" ]]; do
+    if check_pkg_exists "$pkg_name"; then
+      return 0
+    fi
+    echo "  waiting for registry propagation: @forkline/${pkg_name}@${VERSION} (attempt ${attempt}/${max_attempts})"
+    sleep 15
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
 validate_pkg_metadata() {
   local pkg_dir="$1"
   local pkg_name="$2"
@@ -124,7 +139,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
 else
   WRAPPER_BLOCKED=false
   for pkg in "${PLATFORM_PKGS[@]}"; do
-    if ! check_pkg_exists "$pkg"; then
+    if ! wait_pkg_exists "$pkg"; then
       echo "  MISSING: @forkline/$pkg@$VERSION" >&2
       WRAPPER_BLOCKED=true
     fi
