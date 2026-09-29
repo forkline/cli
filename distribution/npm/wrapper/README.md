@@ -58,6 +58,49 @@ If npm installation fails or you need a specific platform binary:
 2. Extract the `forkline` binary
 3. Set `FORKLINE_BINARY` to point to it
 
+## Shell completions
+
+Enable completions with one command (auto-detects your shell):
+
+```bash
+forkline completions install
+```
+
+Or specify a shell explicitly:
+
+```bash
+forkline completions install zsh
+forkline completions install bash
+forkline completions install fish
+```
+
+Manual installation (if `completions install` doesn't work for your setup):
+
+```bash
+# zsh (oh-my-zsh)
+mkdir -p "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/completions"
+forkline completions zsh > "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/completions/_forkline"
+exec zsh
+
+# zsh (plain — user directory)
+mkdir -p ~/.zfunc && forkline completions zsh > ~/.zfunc/_forkline
+# Add to ~/.zshrc (fpath BEFORE compinit):
+#   fpath=($HOME/.zfunc $fpath)
+#   autoload -Uz compinit && compinit
+
+# bash (per-user)
+mkdir -p ~/.local/share/bash-completion/completions
+forkline completions bash > ~/.local/share/bash-completion/completions/forkline
+
+# fish
+mkdir -p ~/.config/fish/completions
+forkline completions fish > ~/.config/fish/completions/forkline.fish
+```
+
+Supported shells: `bash`, `zsh`, `fish`, `powershell`, `elvish`. Run `forkline completions <shell>` to print the script to stdout.
+
+Full instructions: <https://forkline.dev/docs/reference/cli#forkline-completions-shell>
+
 ## Troubleshooting
 
 ### "Platform package not installed"
