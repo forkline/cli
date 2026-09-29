@@ -33,11 +33,17 @@ function detectLinuxLibc() {
     if (output.toLowerCase().includes('musl')) {
       return 'musl';
     }
+    if (output.toLowerCase().includes('gnu') || output.toLowerCase().includes('glibc')) {
+      return 'glibc';
+    }
   } catch (e) {
     // ldd not available or failed
   }
 
-  return 'glibc';
+  throw new Error(
+    'Could not detect libc (neither glibc nor musl). ' +
+    'Set FORKLINE_BINARY to point to the correct binary for your system.'
+  );
 }
 
 function resolvePlatform() {
