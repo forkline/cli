@@ -15,7 +15,7 @@ const TARGETS = {
   'x86_64-pc-windows-msvc': { npm: 'win32-x64', os: ['win32'], cpu: ['x64'] },
 };
 
-const REPO_URL = 'https://github.com/forkline/cli';
+const REPO_URL = 'git+https://github.com/forkline/cli.git';
 const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9][a-zA-Z0-9.]*)?$/;
 
 function parseArgs() {
@@ -198,6 +198,7 @@ function writeWrapperPackage(outDir, version, wrapperTemplateDir) {
 
   const templatePkg = JSON.parse(fs.readFileSync(path.join(wrapperTemplateDir, 'package.json'), 'utf8'));
   templatePkg.version = version;
+  templatePkg.repository = { type: 'git', url: REPO_URL };
   for (const key of Object.keys(templatePkg.optionalDependencies)) {
     templatePkg.optionalDependencies[key] = version;
   }
