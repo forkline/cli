@@ -50,8 +50,8 @@ validate_pkg_metadata() {
   local pkg_name="$2"
   local local_version local_name
 
-  local_version="$(node -e "console.log(require('${pkg_dir}/package.json').version)")"
-  local_name="$(node -e "console.log(require('${pkg_dir}/package.json').name)")"
+  local_version="$(node -p "require(process.argv[1]).version" "$(realpath "$pkg_dir/package.json")")"
+  local_name="$(node -p "require(process.argv[1]).name" "$(realpath "$pkg_dir/package.json")")"
 
   if [[ "$local_version" != "$VERSION" ]]; then
     echo "ERROR: package ${pkg_name} has version ${local_version}, expected ${VERSION}" >&2
