@@ -16,7 +16,7 @@ const TARGETS = {
 };
 
 const REPO_URL = 'https://github.com/forkline/cli';
-const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9][a-zA-Z0-9.]*[a-zA-Z0-9])?$/;
+const SEMVER_RE = /^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9][a-zA-Z0-9.]*)?$/;
 
 function parseArgs() {
   const args = process.argv.slice(2);
