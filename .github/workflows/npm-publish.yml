@@ -11,6 +11,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: npm-publish-${{ github.event.client_payload.tag || inputs.tag }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   id-token: write
