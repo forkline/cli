@@ -161,5 +161,16 @@ else
   publish_pkg "$PACKAGES_DIR/cli" "@forkline/cli"
 fi
 
+if [[ "$DIST_TAG" == "latest" && "$DRY_RUN" != "true" ]]; then
+  echo ""
+  echo "=== Setting 'next' tag to track latest for stable release ==="
+  ALL_PKGS=("${PLATFORM_PKGS[@]}" "cli")
+  for pkg in "${ALL_PKGS[@]}"; do
+    if ! npm dist-tag add "@forkline/${pkg}@${VERSION}" next 2>/dev/null; then
+      echo "  WARNING: failed to set next tag for @forkline/${pkg} (may lack permissions)" >&2
+    fi
+  done
+fi
+
 echo ""
 echo "=== Complete: all 9 packages at $VERSION (tag: $DIST_TAG) ==="
