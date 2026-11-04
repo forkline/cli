@@ -152,24 +152,29 @@ else
   echo "All 8 platform packages verified on registry"
 fi
 
+WRAPPER_SKIPPED=false
 if check_pkg_exists "cli"; then
   echo ""
   echo "SKIP: @forkline/cli@$VERSION already published"
+  WRAPPER_SKIPPED=true
 else
   echo ""
   echo "=== Publishing wrapper package (dist-tag: $DIST_TAG) ==="
   publish_pkg "$PACKAGES_DIR/cli" "@forkline/cli"
 fi
 
-if [[ "$DIST_TAG" == "latest" && "$DRY_RUN" != "true" ]]; then
-  echo ""
-  echo "=== Setting 'next' tag to track latest for stable release ==="
-  ALL_PKGS=("${PLATFORM_PKGS[@]}" "cli")
-  for pkg in "${ALL_PKGS[@]}"; do
-    if ! npm dist-tag add "@forkline/${pkg}@${VERSION}" next 2>/dev/null; then
-      echo "  WARNING: failed to set next tag for @forkline/${pkg} (may lack permissions)" >&2
-    fi
-  done
+echo ""
+echo "=== Verifying wrapper on registry ==="
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "[DRY RUN] Skipping wrapper registry verification"
+elif [[ "$WRAPPER_SKIPPED" == "true" ]]; then
+  echo "Wrapper was already present — skipping verification"
+else
+  if ! wait_pkg_exists "cli"; then
+    echo "ERROR: @forkline/cli@$VERSION not found on registry after publish" >&2
+    exit 1
+  fi
+  echo "Wrapper verified on registry"
 fi
 
 echo ""
