@@ -3,7 +3,7 @@
   "version": "0.0.0-placeholder",
   "description": "Forkline CLI - OpenCode runner management",
   "bin": {
-    "forkline": "./bin/forkline.js"
+    "forkline": "bin/forkline.js"
   },
   "optionalDependencies": {
     "@forkline/cli-darwin-arm64": "0.0.0-placeholder",
